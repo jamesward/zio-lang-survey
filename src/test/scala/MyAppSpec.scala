@@ -51,18 +51,40 @@ class StaticConversation(inputs: Seq[String]) extends Conversation.Service[Any] 
 }
 
 class MyAppSpec extends FlatSpec with Matchers with DefaultRuntime {
-   "The conversation" must "record languages" in {
-     val recorder = new RecordingMonitorService
-     val staticConv = new StaticConversation(Seq("C#", "rust", "scala"))
-
-     val result = MyApp.myAppLogic.provideSome[Clock]({ clockService =>
-        new Conversation with Clock with Monitoring {
+  // Helper methods to stub out the ZIO environment for tests.
+  def staticConversation(conv: String*)(clockService: Clock): MyApp.MyEnv =
+    staticConversation(Monitoring.NoMonitoring.monitoring, conv: _*)(clockService)
+  def staticConversation(monitoringService: Monitoring.Service[Any], conv: String*)(clockService: Clock) = {
+      val staticConv = new StaticConversation(conv)
+      new Conversation with Clock with Monitoring {
             override val clock: Clock.Service[Any] = clockService.clock
             override val scheduler: Scheduler.Service[Any] = clockService.scheduler
             override val conversation: Conversation.Service[Any] = staticConv
-            override val monitoring: Monitoring.Service[Any] = recorder
-        }
-     }).fold(e => 1, a => 0)
+            override val monitoring: Monitoring.Service[Any] = monitoringService
+       }
+  }
+
+  // Business logic checks
+  "The conversation" must "reject non-scala languages" in {
+    val result = MyApp.myAppLogic.provideSome[Clock](
+      staticConversation("C#")
+    ).fold (e => 1, a => 0)
+    assert(unsafeRun(result) == 1)
+  }
+
+  "The conversation" must "accept scala languages" in {
+    val result = MyApp.myAppLogic.provideSome[Clock](
+      staticConversation("Scala")
+    ).fold (e => 1, a => 0)
+    assert(unsafeRun(result) == 0)
+  }
+
+  // Check we monitor appropriately.
+  "The conversation" must "record languages" in {
+     val recorder = new RecordingMonitorService
+     val result = MyApp.myAppLogic.provideSome[Clock](
+         staticConversation(recorder, "C#", "rust", "scala")
+     ).fold(e => 1, a => 0)
 
      assert(unsafeRun(result) == 0)
      assert(recorder.has("scala"))
