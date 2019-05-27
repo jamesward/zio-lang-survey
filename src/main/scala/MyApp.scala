@@ -18,30 +18,43 @@ import java.io.IOException
 
 import scalaz.zio.{App, Schedule, ZIO}
 import Conversation.conversation._
+import Monitoring.monitoring
 import scalaz.zio.clock.Clock
 import scalaz.zio.scheduler.Scheduler
 
 object MyApp extends App {
 
-  type MyEnv = Conversation with Clock
+  // TODO - add monitoring.
+  type MyEnv = Conversation with Clock with Monitoring
 
   override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
+    // TODO - check environment and start up as either webhook, or console.
+    asConsole(myAppLogic).fold(_ => 1, _ => 0)
+  }
+
+  def asConsole(app: ZIO[MyEnv, IOException, Unit]) =
     myAppLogic.provideSome[Clock] { clockService =>
-      new Conversation with Clock {
+      new Conversation with Clock with Monitoring {
         override val clock: Clock.Service[Any] = clockService.clock
         override val scheduler: Scheduler.Service[Any] = clockService.scheduler
         override val conversation: Conversation.Service[Any] = Conversation.StdInOut.conversation
+        override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
       }
-    }.fold(_ => 1, _ => 0)
-  }
+    }
+  // TODO - def asCloud
+  // TODO - def asTest and test...
+
+
+  val acceptableLanguages = Set("scala")
 
   val myAppLogic: ZIO[MyEnv, IOException, Unit] = {
     def validate(lang: String) = {
-      if (lang == "Scala") {
+      if (acceptableLanguages(lang.toLowerCase)) {
         say("Correct!")
       } else {
         for {
           _ <- say("Language not recognized, try again")
+          _ <- say("What is the best programming language?")
           _ <- ZIO.fail(new IOException("Language not recognized, try again"))
         } yield ()
       }
@@ -49,6 +62,7 @@ object MyApp extends App {
 
     val listenUntilValid = for {
       lang <- listen
+      _ <- monitoring.languageVote(lang)
       _ <- validate(lang)
     } yield ()
 
