@@ -18,6 +18,7 @@
  import java.io.IOException
  import java.net.{Socket,ServerSocket}
 
+
 trait CpsServer {
     /** Blocks the current thread until we get another spoken utterance and returns with the following.
      * This will be empty for initial query. 
@@ -28,53 +29,29 @@ trait CpsServer {
 }
 
 /** 
- * This is an instance of an HTTP server for the google cloud hook that assumes we only ever have
- * exactly one conversation.
- *
- *  All pending "say" events are queued and spit out if we have a connection.
- *  All "read" events blocked until we have a result.
- *
- *  This class is highly mutable and wrong/bad.
- *
- * TODO - intatiate one of these PER CONNECTION, and run the app logic that way on an echo server.
+ * This is an instance of an telnet server where we simply read/write conversational text.
  */
-class BadTelnetServer(port: Int = 8022) extends CpsServer {
-   private val server = new java.net.ServerSocket(port) 
-   private var currentSocket: Option[Socket] = None
+class CpsTelnetServer(socket: Socket) extends CpsServer {
 
-   private def ensureConnection[A](f: Socket => A): A = {
-       currentSocket match {
-           case Some(socket) => ()
-           case None =>
-             currentSocket = Some(server.accept)
-       }
-       f(currentSocket.get)
-   }
-
-   def onUserSpeech[R](continuation: String => R): Unit = ensureConnection { socket =>
+   def onUserSpeech[R](continuation: String => R): Unit = { 
        // TODO - read in socket.
        val in = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream))
        continuation(in.readLine)
    }
 
-   def say(msg: String): Unit = ensureConnection { socket =>
+   def say(msg: String): Unit = {
        // TODO - send the message out the socket.
        val out = new java.io.PrintWriter(socket.getOutputStream(), true)
        out.println(msg)
    }
 
    def close(): Unit = {
-       currentSocket match {
-           case Some(socket) => socket.close()
-           case None => ()
-       }
-       // TODO - leave it open for another connection?
-       server.close()
+       socket.close()
    }
 }
 
 /** Adapt the BadEchoServer into ZIO's algebra of effects/async. */
-class ZioServer(s: BadTelnetServer) extends Conversation.Service[Any] {
+class ZioServer(val s: CpsTelnetServer) extends Conversation.Service[Any] {
       override def say(line: String): ZIO[Any, IOException, Unit] = {
         ZIO.effect(s.say(line)).refineOrDie {
           case e : IOException => e
@@ -88,4 +65,21 @@ class ZioServer(s: BadTelnetServer) extends Conversation.Service[Any] {
           }
         }
       }
+}
+object ZioServer {
+
+  def listen(port: Int = 8022): ZIO[Any, IOException, ServerSocket] =
+    ZIO.effect(new ServerSocket(port)) refineOrDie {
+      case e: IOException => e
+    }
+
+  def accept(socket: ServerSocket): ZIO[Any, Throwable, Socket] =
+    ZIO.effect(socket.accept) refineOrDie {
+        case e: IOException => e
+    }
+
+  def shutdown(socket: ServerSocket): ZIO[Any, Throwable, Unit] = 
+    ZIO.effect(socket.close()) refineOrDie {
+         case e: IOException => e
+     }
 }

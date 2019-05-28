@@ -28,8 +28,8 @@ object MyApp extends App {
   override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
     // TODO - check environment and start up as either webhook, or console.
     val runner =
-      if (args == List("-telnet")) myAppLogic.provideSomeM(telnetServerEnvironment)
-      else myAppLogic.provideSome(consoleEnvironment)
+      if (args == List("-telnet")) telnetServer
+      else consoleApp
     runner.fold(error => 1, result => 0)
   }
 
@@ -40,19 +40,23 @@ object MyApp extends App {
         override val conversation: Conversation.Service[Any] = Conversation.StdInOut.conversation
         override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
       }
-      
-  // TODO - def cloudEnvironment
 
-  /** Cconstructs a server environment that connects to a port and acts as a telnet server. */
-  def telnetServerEnvironment(clockService: Clock): ZIO[Any, Throwable, MyEnv] = {
-    ZIO.effect(new BadTelnetServer).map[MyEnv] { s =>
-      new Conversation with Clock with Monitoring {
-        override val clock: Clock.Service[Any] = clockService.clock
-        override val scheduler: Scheduler.Service[Any] = clockService.scheduler
-        override val conversation: Conversation.Service[Any] = new ZioServer(s)
-        override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
-      }
-    }
+  def consoleApp: ZIO[Clock, IOException, Unit] = myAppLogic.provideSome(consoleEnvironment)
+  def telnetServer: ZIO[Clock, IOException, Unit] = {
+    val server = for {
+      server <- ZioServer.listen(8022)
+      // TODO - make this be in parallel.
+      client <- ZioServer.accept(server)
+      result <- myAppLogic.provideSome[Clock] { clockService =>
+        new Conversation with Clock with Monitoring {
+         override val clock: Clock.Service[Any] = clockService.clock
+         override val scheduler: Scheduler.Service[Any] = clockService.scheduler
+         override val conversation: Conversation.Service[Any] = new ZioServer(new CpsTelnetServer(client))
+         override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+        }
+      }.ensuring(ZIO.effectTotal(client.close))
+    } yield result
+    server.fold(error => 1, result => 0)
   }
 
   // Program logic.
