@@ -14,8 +14,82 @@
  * limitations under the License.
  */
 
+import java.io.IOException
 import org.scalatest.{FlatSpec, Matchers}
+import scalaz.zio.{ZIO, DefaultRuntime}
+import scalaz.zio.clock.Clock
+import scalaz.zio.scheduler.Scheduler
 
-class MyAppSpec extends FlatSpec with Matchers {
+/** Helper module to remember all logged languages in the Monitoring component. */
+class RecordingMonitorService extends Monitoring.Service[Any] {
+  private val recorded = collection.mutable.Set[String]()
+  override def languageVote(language: String): ZIO[Any, IOException, Unit] =
+           ZIO effectTotal {
+             recorded add language
+           }
+  def has(language: String): Boolean = recorded(language)          
+}
+/** Helper module to allow driving conversation by specifying only inputs. */
+class StaticConversation(inputs: Seq[String]) extends Conversation.Service[Any] {
+    // TODO - thread the index through here somehow, rather than hardcoding...
+    var idx = 0
+    override def say(s: String): ZIO[Any, IOException, Unit] = {
+      ZIO.succeed(())
+    }
 
+    override def listen: ZIO[Any, IOException, String] = {
+      ZIO.effect {
+          if (idx < inputs.length) {
+              val result = inputs(idx)
+              idx += 1
+              result
+          } else throw new IOException("Conversation was terminated")
+      } refineOrDie {
+          case io: IOException => io
+      }
+    }
+}
+
+class MyAppSpec extends FlatSpec with Matchers with DefaultRuntime {
+  // Helper methods to stub out the ZIO environment for tests.
+  def staticConversation(conv: String*)(clockService: Clock): MyApp.MyEnv =
+    staticConversation(Monitoring.NoMonitoring.monitoring, conv: _*)(clockService)
+  def staticConversation(monitoringService: Monitoring.Service[Any], conv: String*)(clockService: Clock) = {
+      val staticConv = new StaticConversation(conv)
+      new Conversation with Clock with Monitoring {
+            override val clock: Clock.Service[Any] = clockService.clock
+            override val scheduler: Scheduler.Service[Any] = clockService.scheduler
+            override val conversation: Conversation.Service[Any] = staticConv
+            override val monitoring: Monitoring.Service[Any] = monitoringService
+       }
+  }
+
+  // Business logic checks
+  "The conversation" must "reject non-scala languages" in {
+    val result = MyApp.myAppLogic.provideSome[Clock](
+      staticConversation("C#")
+    ).fold (e => 1, a => 0)
+    assert(unsafeRun(result) == 1)
+  }
+
+  "The conversation" must "accept scala languages" in {
+    val result = MyApp.myAppLogic.provideSome[Clock](
+      staticConversation("Scala")
+    ).fold (e => 1, a => 0)
+    assert(unsafeRun(result) == 0)
+  }
+
+  // Check we monitor appropriately.
+  "The conversation" must "record languages" in {
+     val recorder = new RecordingMonitorService
+     val result = MyApp.myAppLogic.provideSome[Clock](
+         staticConversation(recorder, "C#", "rust", "scala")
+     ).fold(e => 1, a => 0)
+
+     assert(unsafeRun(result) == 0)
+     assert(recorder.has("scala"))
+     assert(recorder.has("rust"))
+     assert(recorder.has("C#"))
+     info("custom monitoring seems to work")
+  }
 }
