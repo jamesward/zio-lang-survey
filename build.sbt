@@ -1,7 +1,7 @@
 enablePlugins(JavaAppPackaging, DockerPlugin)
 
 val Http4sVersion = "0.20.1"
-val ZioVersion = "1.0-RC4"
+val ZioVersion = "1.0-RC5"
 
 libraryDependencies ++= Seq(
   "org.scalaz"      %% "scalaz-zio"              % ZioVersion,

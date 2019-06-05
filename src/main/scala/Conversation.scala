@@ -24,9 +24,19 @@ trait Conversation extends Serializable {
 }
 
 object Conversation extends Serializable {
+
+  /*
+  sealed trait State
+  case object Init extends State
+  case object Stating extends State
+  case class Response(text: String) extends State
+  case object Complete extends State
+   */
+
   trait Service[R] {
     def say(s: String): ZIO[R, IOException, Unit]
     def listen: ZIO[R, IOException, String]
+    //def say[A: State](s: String): ZIO[R, IOException, A]
   }
 
   object StdInOut extends Conversation with Console.Live {

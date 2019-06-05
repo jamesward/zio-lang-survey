@@ -21,19 +21,19 @@
 
 trait CpsServer {
     /** Blocks the current thread until we get another spoken utterance and returns with the following.
-     * This will be empty for initial query. 
+     * This will be empty for initial query.
      */
     def onUserSpeech[R](continuation: String => R): Unit
     /** Speaks back to the user. */
     def say(msg: String): Unit
 }
 
-/** 
+/**
  * This is an instance of an telnet server where we simply read/write conversational text.
  */
 class CpsTelnetServer(socket: Socket) extends CpsServer {
 
-   def onUserSpeech[R](continuation: String => R): Unit = { 
+   def onUserSpeech[R](continuation: String => R): Unit = {
        // TODO - read in socket.
        val in = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream))
        continuation(in.readLine)
@@ -41,7 +41,7 @@ class CpsTelnetServer(socket: Socket) extends CpsServer {
 
    def say(msg: String): Unit = {
        // TODO - send the message out the socket.
-       val out = new java.io.PrintWriter(socket.getOutputStream(), true)
+       val out = new java.io.PrintWriter(socket.getOutputStream, true)
        out.println(msg)
    }
 
@@ -59,7 +59,7 @@ class ZioServer(val s: CpsTelnetServer) extends Conversation.Service[Any] {
       }
 
       override def listen: ZIO[Any, IOException, String] = {
-        ZIO.effectAsync[IOException, String] { callback =>
+        ZIO.effectAsync[Any, IOException, String] { callback =>
           s onUserSpeech { said =>
             callback(ZIO.succeed(said))
           }
@@ -78,7 +78,7 @@ object ZioServer {
         case e: IOException => e
     }
 
-  def shutdown(socket: ServerSocket): ZIO[Any, Throwable, Unit] = 
+  def shutdown(socket: ServerSocket): ZIO[Any, Throwable, Unit] =
     ZIO.effect(socket.close()) refineOrDie {
          case e: IOException => e
      }
