@@ -93,9 +93,12 @@ object TelnetServerRunner {
        // Listen to a port                               
        ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
          // TODO - Figure out how to fork after accpeting and immediately allow more connections to be handled.
-         ZManaged.make(SimpleServerSockets.accept(server))(SimpleSockets.close).use { socket =>
-           handleConversation(socket, initialState, intentHandler)(handler)
-         }
-       }.forever // This will close the socket and reopen, killing pending clients.
+         val handleOneConnection =
+           for {
+               socket <- SimpleServerSockets.accept(server)
+               forked <- handleConversation(socket, initialState, intentHandler)(handler).ensuring(SimpleSockets.close(socket)).fork
+           } yield ()
+         handleOneConnection.forever
+       }
     }
 }
