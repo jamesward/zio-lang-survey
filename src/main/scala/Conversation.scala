@@ -15,16 +15,24 @@
  */
 
 import java.io.IOException
+import scalaz.zio.ZIO
 
 trait Conversation extends Serializable {
-  val state: Conversation.State
+  def output: Conversation.Output[Any]
 }
 
 object Conversation {
-  sealed trait State
-  case object Init extends State
-  //case object Stating extends State
-  case class Response(text: String) extends State
-  case object Complete extends State
+  trait Output[R] {
+    /** Output the string to the user. */
+    def say(value: String): ZIO[R, IOException, Unit]
+    /** Prompt the user for more input. */
+    // TODO - figure out how to specify intents we expect.
+    def prompt(value: String): ZIO[Conversation, IOException, Unit]
+  }
+
+  object output extends Conversation.Output[Conversation] {
+    def say(value: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.output.say(value))
+    def prompt(value: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.output.prompt(value))
+  }
 }
 

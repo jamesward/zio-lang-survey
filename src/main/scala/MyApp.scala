@@ -18,103 +18,77 @@ import java.io.IOException
 import java.net.{ServerSocket, Socket}
 
 import scalaz.zio.{App, Ref, Schedule, ZIO, ZManaged}
-import Channel.channel._
 import Monitoring.monitoring
-import MyApp.myAppLogic
+import Conversation.output
 import org.http4s.server.blaze.BlazeServerBuilder
 import scalaz.zio.clock.Clock
 import scalaz.zio.scheduler.Scheduler
 
-object MyApp extends App {
-  type MyEnv = Conversation with Channel with Monitoring with Clock
+/** A mapping off all conversational intents we expect users to give us. */
+sealed trait SurveyIntent
+case class StartSurvey() extends SurveyIntent
+case class LanguageChoice(language: String) extends SurveyIntent
 
-  override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
-    val runner =
-      if (args == List("-telnet")) telnetServer
-      else consoleApp
+/** The states our conversation could be in.  basically "starting" or "prompting". */
+sealed trait SurveyState
+case class Init() extends SurveyState
+case class Question() extends SurveyState
+case class Done() extends SurveyState
 
-    runner.fold(_ => 1, _ => 0)
-  }
 
-  def consoleApp: ZIO[Clock, IOException, Unit] = {
-    def withState(newState: Conversation.State = Conversation.Init): ZIO[Clock, IOException, Conversation.State] = {
-      myAppLogic.provideSome[Clock] { clockService =>
-        new Conversation with Channel with Monitoring with Clock {
-          override val clock: Clock.Service[Any] = clockService.clock
-          override val state: Conversation.State = newState
-          override val channel: Channel.Service[Any] = Channel.StdInOut.channel
-          override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
-        }
-      }
-    }
+object MyApp extends ConversationRunner {
 
-    def untilComplete(zio: ZIO[Clock, IOException, Conversation.State]): ZIO[Clock, IOException, Conversation.State] = {
-      zio.flatMap {
-        case Conversation.Complete => ZIO.succeed(Conversation.Complete)
-        case state => untilComplete(withState(state))
-      }
-    }
+  val acceptableLanguages = Set("scala")    
 
-    untilComplete(withState()).unit
-  }
+  type State = SurveyState
+  type Intent = SurveyIntent
 
-  def telnetServer: ZIO[Clock, IOException, Unit] = {
-    /*
-    def acquire = ZioServer.listen()
-    def release(server: ServerSocket) = ZIO.effectTotal(server.close())
 
-    ZManaged.make(acquire)(release).use { server =>
-      def conversation(client: Socket) = myAppLogic.provideSome[Clock] { clockService =>
-        new Conversation with Monitoring with Clock {
-          override val clock: Clock.Service[Any] = clockService.clock
-          override val conversation: Conversation.Service[Any] = new ZioServer(new CpsTelnetServer(client))
-          override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
-        }
-      }.ensuring(ZIO.effectTotal(client.close()))
-
-      val haveConversation = for {
-        client <- ZioServer.accept(server)
-        result <- conversation(client)
-      } yield result
-
-      haveConversation.forever.mapError(new IOException(_))
-    }
-     */
-
-    ???
-  }
-
-  val acceptableLanguages = Set("scala")
-
-  def myAppLogic: ZIO[MyEnv, IOException, Conversation.State] = {
-
-    def run(conversation: Conversation): ZIO[MyEnv, IOException, Conversation.State] = {
-      conversation.state match {
-        case Conversation.Init =>
+  def initialState = Init()
+  def handleConversationTurn(intent: SurveyIntent): ZIO[ConversationEnv, IOException, SurveyState] = {
+     def askBestLanguage = 
+       for {
+         _ <- output.prompt("Survey says: What is the best programming language?")
+       } yield Question()
+     def handleLanguage(lang: String): ZIO[ConversationEnv, IOException, State] = {
+       if (acceptableLanguages(lang.toLowerCase)) {
+         for(_ <- output.say("Correct!")) yield Done()
+       } else 
+         for {
+           _ <- output.say("Wrong.")
+           result <- askBestLanguage
+         } yield result
+     }
+     intent match {
+       // The user started the survey.
+       case StartSurvey() => askBestLanguage
+       // The user answered the survey question.
+       case LanguageChoice(lang) => 
           for {
-            _ <- out("Survey says: What is the best programming language?")
-            response <- in
-          } yield Conversation.Response(response)
+            _ <- monitoring.languageVote(lang)
+            result <- handleLanguage(lang)
+          } yield result
+       // We have no idea what the user just said.
+       case _ => 
+          for {
+            _ <- output.say("I'm sorry, I don't understand.")
+            result <- askBestLanguage
+          } yield result 
+     }
+  }
 
-        case Conversation.Response(text) =>
-          val output =
-            if (acceptableLanguages(text.toLowerCase)) {
-              out("Correct!")
-            } else {
-              out("Wrong.")
-            }
 
-          output.map(_ => Conversation.Complete)
+  // Environment utilities.
 
-        case Conversation.Complete =>
-          ZIO.succeed(Conversation.Complete)
+  // Module to help us understand intents.
+  override val intentHandler = new IntentHandler[SurveyIntent, SurveyState] {
+    def fromCloud(in: String): SurveyIntent = ???
+    def fromRaw(in: String, state: SurveyState): SurveyIntent = 
+      state match {
+        case Init() => StartSurvey()
+        case Question() => LanguageChoice(in) 
+        case Done() => ???
       }
-    }
-
-    for {
-      conversation <- ZIO.environment[Conversation]
-      next <- run(conversation)
-    } yield next
   }
 
 }
