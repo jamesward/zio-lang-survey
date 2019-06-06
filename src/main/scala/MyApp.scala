@@ -52,7 +52,7 @@ object MyApp extends ConversationRunner {
        } yield Question()
      def handleLanguage(lang: String): ZIO[ConversationEnv, IOException, State] = {
        if (acceptableLanguages(lang.toLowerCase)) {
-         for(_ <- output.say("Correct!")) yield Done()
+         output.say("Correct!").map(_ => Done())
        } else 
          for {
            _ <- output.say("Wrong.")

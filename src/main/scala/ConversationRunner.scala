@@ -28,6 +28,7 @@ import scalaz.zio.console.Console
  * We attempt to unify all representations of user's intent into a single model.
  */
 trait IntentHandler[Intent, State] {
+    // TODO - actually pull this from Cloud API endpoints.
     def fromCloud(in: String): Intent
     // Because we're not providing NLU hooks into console simulation, we're doing all the work here...
     def fromRaw(in: String, state: State): Intent
@@ -51,7 +52,7 @@ trait ConversationRunner extends App {
 
   override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
     val runner =
-      if (args == List("-telnet")) ???
+      if (args == List("-telnet")) telnetApp
       else consoleApp
 
     runner.fold(_ => 1, _ => 0)
@@ -62,7 +63,15 @@ trait ConversationRunner extends App {
     ConsoleHandler.runConversation(initialState, intentHandler, handleConversationTurn).provideSome[Clock] { services =>
        new Monitoring with Clock {
           override val clock: Clock.Service[Any] = services.clock
-          override val scheduler: Scheduler.Service[Any] = services.scheduler
+          override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+        }
+    }
+  }
+
+  def telnetApp: ZIO[Clock, IOException, Unit] = {
+    TelnetServerRunner.openServer(8022, initialState, intentHandler)(handleConversationTurn).provideSome[Clock] { services =>
+       new Monitoring with Clock {
+          override val clock: Clock.Service[Any] = services.clock
           override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
         }
     }

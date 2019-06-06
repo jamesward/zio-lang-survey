@@ -50,7 +50,6 @@ object ConsoleHandler {
           userState <- handler(i).provideSome[Monitoring with Clock] { services =>
             new Conversation with Monitoring with Clock {
               override val clock: Clock.Service[Any] = services.clock
-              override val scheduler: Scheduler.Service[Any] = services.scheduler
               override val output: Conversation.Output[Any] = outputHack
               override val monitoring: Monitoring.Service[Any] = services.monitoring
             }
