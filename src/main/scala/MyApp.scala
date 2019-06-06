@@ -18,14 +18,15 @@ import java.io.IOException
 import java.net.{ServerSocket, Socket}
 
 import scalaz.zio.{App, Ref, Schedule, ZIO, ZManaged}
-import Conversation.conversation._
+import Channel.channel._
 import Monitoring.monitoring
+import MyApp.myAppLogic
 import org.http4s.server.blaze.BlazeServerBuilder
 import scalaz.zio.clock.Clock
 import scalaz.zio.scheduler.Scheduler
 
 object MyApp extends App {
-  type MyEnv = Conversation with Monitoring with Clock
+  type MyEnv = Conversation with Channel with Monitoring with Clock
 
   override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
     val runner =
@@ -35,15 +36,30 @@ object MyApp extends App {
     runner.fold(_ => 1, _ => 0)
   }
 
-  def consoleApp: ZIO[Clock, IOException, Unit] = myAppLogic.provideSome[Clock] { clockService =>
-    new Conversation with Monitoring with Clock {
-      override val clock: Clock.Service[Any] = clockService.clock
-      override val conversation: Conversation.Service[Any] = Conversation.StdInOut.conversation
-      override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+  def consoleApp: ZIO[Clock, IOException, Unit] = {
+    def withState(newState: Conversation.State = Conversation.Init): ZIO[Clock, IOException, Conversation.State] = {
+      myAppLogic.provideSome[Clock] { clockService =>
+        new Conversation with Channel with Monitoring with Clock {
+          override val clock: Clock.Service[Any] = clockService.clock
+          override val state: Conversation.State = newState
+          override val channel: Channel.Service[Any] = Channel.StdInOut.channel
+          override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+        }
+      }
     }
+
+    def untilComplete(zio: ZIO[Clock, IOException, Conversation.State]): ZIO[Clock, IOException, Conversation.State] = {
+      zio.flatMap {
+        case Conversation.Complete => ZIO.succeed(Conversation.Complete)
+        case state => untilComplete(withState(state))
+      }
+    }
+
+    untilComplete(withState()).unit
   }
 
   def telnetServer: ZIO[Clock, IOException, Unit] = {
+    /*
     def acquire = ZioServer.listen()
     def release(server: ServerSocket) = ZIO.effectTotal(server.close())
 
@@ -63,59 +79,42 @@ object MyApp extends App {
 
       haveConversation.forever.mapError(new IOException(_))
     }
-  }
-
-  def webServer: ZIO[Clock, IOException, Unit] = {
-
-    // Ref.make()
+     */
 
     ???
   }
 
-  // Program logic.
   val acceptableLanguages = Set("scala")
 
-  val myAppLogic: ZIO[MyEnv, IOException, Unit] = {
-    def validate(lang: String) = {
-      if (acceptableLanguages(lang.toLowerCase)) {
-        say("Correct!")
-      } else {
-        for {
-          _ <- say("Language not recognized, try again")
-          _ <- say("What is the best programming language?")
-          _ <- ZIO.fail(new IOException("Language not recognized, try again"))
-        } yield ()
+  def myAppLogic: ZIO[MyEnv, IOException, Conversation.State] = {
+
+    def run(conversation: Conversation): ZIO[MyEnv, IOException, Conversation.State] = {
+      conversation.state match {
+        case Conversation.Init =>
+          for {
+            _ <- out("Survey says: What is the best programming language?")
+            response <- in
+          } yield Conversation.Response(response)
+
+        case Conversation.Response(text) =>
+          val output =
+            if (acceptableLanguages(text.toLowerCase)) {
+              out("Correct!")
+            } else {
+              out("Wrong.")
+            }
+
+          output.map(_ => Conversation.Complete)
+
+        case Conversation.Complete =>
+          ZIO.succeed(Conversation.Complete)
       }
     }
 
-    val listenUntilValid = for {
-      lang <- listen
-      _ <- monitoring.languageVote(lang)
-      _ <- validate(lang)
-    } yield ()
-
-    val takeSurvey: ZIO[MyEnv, IOException, Unit] = for {
-      _ <- say("Survey says: What is the best programming language?")
-      _ <- listenUntilValid.retry(Schedule.recurs(3)): ZIO[MyEnv, IOException, Unit] // otherwise this is ZIO[MyEnv, Any, Unit]
-    } yield ()
-
-    takeSurvey
+    for {
+      conversation <- ZIO.environment[Conversation]
+      next <- run(conversation)
+    } yield next
   }
-
-  /*
-  def myAppLogic(state: Conversation.State = Conversation.Init): ZIO[MyEnv, IOException, Conversation.State] = {
-    state match {
-      case Conversation.Init => say("Survey says: What is the best programming language?")
-      case Conversation.Response(lang) =>
-        if (acceptableLanguages(lang.toLowerCase)) {
-          say("Correct!")
-        } else {
-          ask("Language not recognized, try again")
-        }
-
-      case Conversation.Complete => ZIO.succeed(state)
-    }
-
-   */
 
 }

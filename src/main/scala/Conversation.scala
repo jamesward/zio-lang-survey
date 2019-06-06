@@ -16,44 +16,15 @@
 
 import java.io.IOException
 
-import scalaz.zio.ZIO
-import scalaz.zio.console.Console
-
 trait Conversation extends Serializable {
-  val conversation: Conversation.Service[Any]
+  val state: Conversation.State
 }
 
-object Conversation extends Serializable {
-
-  /*
+object Conversation {
   sealed trait State
   case object Init extends State
-  case object Stating extends State
+  //case object Stating extends State
   case class Response(text: String) extends State
   case object Complete extends State
-   */
-
-  trait Service[R] {
-    def say(s: String): ZIO[R, IOException, Unit]
-    def listen: ZIO[R, IOException, String]
-    //def say[A: State](s: String): ZIO[R, IOException, A]
-  }
-
-  object StdInOut extends Conversation with Console.Live {
-    override val conversation: Service[Any] = new Service[Any] {
-      override def say(s: String): ZIO[Any, IOException, Unit] = {
-        console.putStrLn(s).mapError(_ => new IOException())
-      }
-
-      override def listen: ZIO[Any, IOException, String] = {
-        console.getStrLn
-      }
-    }
-  }
-
-  object conversation extends Conversation.Service[Conversation] {
-    override def say(s: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.conversation.say(s))
-    override def listen: ZIO[Conversation, IOException, String] = ZIO.accessM[Conversation](_.conversation.listen)
-  }
-
 }
+

@@ -51,14 +51,14 @@ class CpsTelnetServer(socket: Socket) extends CpsServer {
 }
 
 /** Adapt the BadEchoServer into ZIO's algebra of effects/async. */
-class ZioServer(val s: CpsTelnetServer) extends Conversation.Service[Any] {
-      override def say(line: String): ZIO[Any, IOException, Unit] = {
+class ZioServer(val s: CpsTelnetServer) extends Channel.Service[Any] {
+      override def out(line: String): ZIO[Any, IOException, Unit] = {
         ZIO.effect(s.say(line)).refineOrDie {
           case e : IOException => e
         }
       }
 
-      override def listen: ZIO[Any, IOException, String] = {
+      override def in: ZIO[Any, IOException, String] = {
         ZIO.effectAsync[Any, IOException, String] { callback =>
           s onUserSpeech { said =>
             callback(ZIO.succeed(said))
