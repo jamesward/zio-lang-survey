@@ -32,42 +32,36 @@ object Monitoring extends Serializable {
   }
 
   object NoMonitoring extends Monitoring {
-    override val monitoring: Service[Any] = new Service[Any] {
-      override def languageVote(language: String): ZIO[Any, IOException, Unit] =
-        ZIO.succeed(())
-      }
+    override val monitoring: Service[Any] = (language: String) => ZIO.succeed(())
   }
 
   /** This implementation provides a monitoring API using stackdriver. */
   class StackDriverMonitoring(client: MetricServiceClient, projectId: String) extends Monitoring {
-    override val monitoring: Service[Any] = new Service[Any] {
-
-      override def languageVote(language: String): ZIO[Any, IOException, Unit] = ZIO effect {
-        val name = ProjectName.of(projectId)
-        val labels = new java.util.HashMap[String, String]()
-        labels.put("language", language)
-        val metric = Metric.newBuilder()
-          .setType("custom.googleapis.com/survey/daily_votes")
-          .putAllLabels(labels)
-          .build()
-        val resourceLabels = new java.util.HashMap[String, String]
-        resourceLabels.put("project_id", projectId)
-        val resource = MonitoredResource.newBuilder.setType("global").putAllLabels(resourceLabels).build()
-        val interval = TimeInterval.newBuilder()
-          .setEndTime(Timestamps.fromMillis(System.currentTimeMillis()))
-          .build()
-        val point = Point.newBuilder.setInterval(interval).setValue(
-            TypedValue.newBuilder.setDoubleValue(1).build()
-        ).build()
-        val ts =
-          TimeSeries.newBuilder.setMetric(metric).setResource(resource).addPoints(point).build()
-        val request =
-          CreateTimeSeriesRequest.newBuilder.setName(name.toString).addTimeSeries(ts).build()
-        client.createTimeSeries(request)
-      } refineOrDie {
-          case io: IOException => io
-          case other: Throwable => new IOException("Failed to log language metric", other)
-      }
+    override val monitoring: Service[Any] = (language: String) => ZIO effect {
+      val name = ProjectName.of(projectId)
+      val labels = new java.util.HashMap[String, String]()
+      labels.put("language", language)
+      val metric = Metric.newBuilder()
+        .setType("custom.googleapis.com/survey/daily_votes")
+        .putAllLabels(labels)
+        .build()
+      val resourceLabels = new java.util.HashMap[String, String]
+      resourceLabels.put("project_id", projectId)
+      val resource = MonitoredResource.newBuilder.setType("global").putAllLabels(resourceLabels).build()
+      val interval = TimeInterval.newBuilder()
+        .setEndTime(Timestamps.fromMillis(System.currentTimeMillis()))
+        .build()
+      val point = Point.newBuilder.setInterval(interval).setValue(
+        TypedValue.newBuilder.setDoubleValue(1).build()
+      ).build()
+      val ts =
+        TimeSeries.newBuilder.setMetric(metric).setResource(resource).addPoints(point).build()
+      val request =
+        CreateTimeSeriesRequest.newBuilder.setName(name.toString).addTimeSeries(ts).build()
+      client.createTimeSeries(request)
+    } refineOrDie {
+      case io: IOException => io
+      case other: Throwable => new IOException("Failed to log language metric", other)
     }
   }
 

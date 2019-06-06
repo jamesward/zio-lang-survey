@@ -32,7 +32,7 @@ object SimpleSockets {
       }
     def println(socket: Socket, msg: String): ZIO[Any, IOException, Unit] =
       ZIO effect {
-        val out = new java.io.PrintWriter(socket.getOutputStream(), true)
+        val out = new java.io.PrintWriter(socket.getOutputStream, true)
         out.println(msg)
       } refineOrDie {
         case io: IOException => io

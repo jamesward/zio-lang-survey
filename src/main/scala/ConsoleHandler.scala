@@ -4,6 +4,8 @@ import ConversationRunner.ConversationEnv
 import scalaz.zio.ZIO
 import scalaz.zio.clock.Clock
 
+import scala.io.StdIn
+
 /** A mutable environment we use underneath ZIO to do all the trickery/hackery of running a terminal app. */
 class ConsoleOutput() extends Conversation.Output[Any] {
   private[this] var willPrompt: Boolean = false
@@ -35,9 +37,9 @@ object ConsoleHandler {
         handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, ConsoleState[State]] = {
       val intent =
         state match {
-            case ConsoleStart(state) => ZIO.succeed(intentHandler.fromRaw("", state))
+            case ConsoleStart(newState) => ZIO.succeed(intentHandler.fromRaw("", newState))
             case ConsoleDone() => ZIO.fail(new IOException("Conversation terminated, cannot prompt."))
-            case ConsolePrompt(state) => ZIO.effect(intentHandler.fromRaw(Console.readLine, state)).refineOrDie {
+            case ConsolePrompt(newState) => ZIO.effect(intentHandler.fromRaw(StdIn.readLine(), newState)).refineOrDie {
                 case io: IOException => io
             }
         }
