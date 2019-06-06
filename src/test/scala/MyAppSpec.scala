@@ -30,65 +30,65 @@ class RecordingMonitorService extends Monitoring.Service[Any] {
   def has(language: String): Boolean = recorded(language)          
 }
 /** Helper module to allow driving conversation by specifying only inputs. */
-class StaticConversation(inputs: Seq[String]) extends Conversation.Service[Any] {
-    // TODO - thread the index through here somehow, rather than hardcoding...
-    var idx = 0
-    override def say(s: String): ZIO[Any, IOException, Unit] = {
-      ZIO.succeed(())
-    }
-
-    override def listen: ZIO[Any, IOException, String] = {
-      ZIO.effect {
-          if (idx < inputs.length) {
-              val result = inputs(idx)
-              idx += 1
-              result
-          } else throw new IOException("Conversation was terminated")
-      } refineOrDie {
-          case io: IOException => io
+class StoredConversationOutput() extends Conversation.Output[Any] {
+  var prompt: Boolean = false
+  val spokenSentences = new collection.mutable.ArrayBuffer[String]() 
+ 
+    /** Output the string to the user. */
+    def say(value: String): ZIO[Any, IOException, Unit] = 
+      ZIO effectTotal {
+        spokenSentences += value
       }
-    }
+    /** Prompt the user for more input. */
+    // TODO - figure out how to specify intents we expect.
+    def prompt(value: String): ZIO[Any, IOException, Unit] =
+      ZIO effectTotal {
+        spokenSentences += value
+        prompt = true
+      }
 }
 
 class MyAppSpec extends FlatSpec with Matchers with DefaultRuntime {
-  // Helper methods to stub out the ZIO environment for tests.
-  def staticConversation(conv: String*)(clockService: Clock): MyApp.MyEnv =
-    staticConversation(Monitoring.NoMonitoring.monitoring, conv: _*)(clockService)
-  def staticConversation(monitoringService: Monitoring.Service[Any], conv: String*)(clockService: Clock) = {
-      val staticConv = new StaticConversation(conv)
-      new Conversation with Clock with Monitoring {
-            override val clock: Clock.Service[Any] = clockService.clock
-            override val scheduler: Scheduler.Service[Any] = clockService.scheduler
-            override val conversation: Conversation.Service[Any] = staticConv
+
+  def capturedConversationEnv(
+    store: Conversation.Output[Any],
+    monitoringService: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+  )(services: Clock): MyApp.ConversationEnv = {
+    new  Conversation with Monitoring with Clock {
+        override val clock: Clock.Service[Any] = services.clock
+            override val scheduler: Scheduler.Service[Any] = services.scheduler
+            override val output: Conversation.Output[Any] = store
             override val monitoring: Monitoring.Service[Any] = monitoringService
-       }
+    }
   }
 
   // Business logic checks
   "The conversation" must "reject non-scala languages" in {
-    val result = MyApp.myAppLogic.provideSome[Clock](
-      staticConversation("C#")
-    ).fold (e => 1, a => 0)
-    assert(unsafeRun(result) == 1)
+    val output = new StoredConversationOutput()
+    
+    val result = MyApp.handleConversationTurn(LanguageChoice("C#")).provideSome[Clock](
+      capturedConversationEnv(output)
+    )
+    // Check output state.
+    assert(unsafeRun(result) == Question())
   }
-
   "The conversation" must "accept scala languages" in {
-    val result = MyApp.myAppLogic.provideSome[Clock](
-      staticConversation("Scala")
-    ).fold (e => 1, a => 0)
-    assert(unsafeRun(result) == 0)
+    val output = new StoredConversationOutput()
+    MyApp.handleConversationTurn(LanguageChoice("scala"))
+    val result = MyApp.handleConversationTurn(LanguageChoice("Scala")).provideSome[Clock](
+      capturedConversationEnv(output)
+    )
+    assert(unsafeRun(result) == Done())
   }
 
   // Check we monitor appropriately.
-  "The conversation" must "record languages" in {
+  "The conversation" must "record non-scala languages" in {
+    val output = new StoredConversationOutput()
      val recorder = new RecordingMonitorService
-     val result = MyApp.myAppLogic.provideSome[Clock](
-         staticConversation(recorder, "C#", "rust", "scala")
-     ).fold(e => 1, a => 0)
-
-     assert(unsafeRun(result) == 0)
-     assert(recorder.has("scala"))
-     assert(recorder.has("rust"))
+     val result = MyApp.handleConversationTurn(LanguageChoice("C#")).provideSome[Clock](
+       capturedConversationEnv(output, recorder)
+     )
+     assert(unsafeRun(result) == Question())
      assert(recorder.has("C#"))
      info("custom monitoring seems to work")
   }
