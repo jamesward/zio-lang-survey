@@ -15,10 +15,10 @@
  */
 
 import java.io.IOException
+
 import org.scalatest.{FlatSpec, Matchers}
-import scalaz.zio.{ZIO, DefaultRuntime}
 import scalaz.zio.clock.Clock
-import scalaz.zio.scheduler.Scheduler
+import scalaz.zio.{DefaultRuntime, ZIO}
 
 /** Helper module to remember all logged languages in the Monitoring component. */
 class RecordingMonitorService extends Monitoring.Service[Any] {
@@ -27,15 +27,15 @@ class RecordingMonitorService extends Monitoring.Service[Any] {
            ZIO effectTotal {
              recorded add language
            }
-  def has(language: String): Boolean = recorded(language)          
+  def has(language: String): Boolean = recorded(language)
 }
 /** Helper module to allow driving conversation by specifying only inputs. */
 class StoredConversationOutput() extends Conversation.Output[Any] {
   var prompt: Boolean = false
-  val spokenSentences = new collection.mutable.ArrayBuffer[String]() 
- 
+  val spokenSentences = new collection.mutable.ArrayBuffer[String]()
+
     /** Output the string to the user. */
-    def say(value: String): ZIO[Any, IOException, Unit] = 
+    def say(value: String): ZIO[Any, IOException, Unit] =
       ZIO effectTotal {
         spokenSentences += value
       }
@@ -54,18 +54,17 @@ class MyAppSpec extends FlatSpec with Matchers with DefaultRuntime {
     store: Conversation.Output[Any],
     monitoringService: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
   )(services: Clock): MyApp.ConversationEnv = {
-    new  Conversation with Monitoring with Clock {
+    new Conversation with Monitoring with Clock {
         override val clock: Clock.Service[Any] = services.clock
-            override val scheduler: Scheduler.Service[Any] = services.scheduler
-            override val output: Conversation.Output[Any] = store
-            override val monitoring: Monitoring.Service[Any] = monitoringService
+        override val output: Conversation.Output[Any] = store
+        override val monitoring: Monitoring.Service[Any] = monitoringService
     }
   }
 
   // Business logic checks
   "The conversation" must "reject non-scala languages" in {
     val output = new StoredConversationOutput()
-    
+
     val result = MyApp.handleConversationTurn(LanguageChoice("C#")).provideSome[Clock](
       capturedConversationEnv(output)
     )

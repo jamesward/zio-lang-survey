@@ -15,6 +15,7 @@
  */
 
 import java.io.IOException
+
 import scalaz.zio.ZIO
 
 trait Conversation extends Serializable {

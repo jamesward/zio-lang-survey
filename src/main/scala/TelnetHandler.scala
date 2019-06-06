@@ -1,9 +1,9 @@
-import scalaz.zio.{ZIO,ZManaged}
 import java.io.IOException
-import java.net.{Socket,ServerSocket}
-import scalaz.zio.clock.Clock
-import scalaz.zio.scheduler.Scheduler
+import java.net.{ServerSocket, Socket}
+
 import ConversationRunner.ConversationEnv
+import scalaz.zio.clock.Clock
+import scalaz.zio.{ZIO, ZManaged}
 
 
 object SimpleServerSockets {
@@ -18,7 +18,7 @@ object SimpleServerSockets {
         case e: IOException => e
     }
 
-  def shutdown(socket: ServerSocket): ZIO[Any, Nothing, Unit] = 
+  def shutdown(socket: ServerSocket): ZIO[Any, Nothing, Unit] =
     ZIO.effectTotal(socket.close())
 }
 
@@ -78,11 +78,11 @@ object TelnetServerRunner {
             case (true, s) => ZIO.succeed(())
             case (false, s) =>
               for {
-                userInput <- SimpleSockets.readLine(socket)  
+                userInput <- SimpleSockets.readLine(socket)
                 intent = intentHandler.fromRaw(userInput, s)
-                result <- untilComplete(runIntent(intent)) 
+                result <- untilComplete(runIntent(intent))
               } yield result
-              
+
          }
        }
       untilComplete(runIntent(initialIntent))
@@ -90,7 +90,7 @@ object TelnetServerRunner {
 
     def openServer[Intent, State](port: Int = 8022, initialState: State,
                                   intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
-       // Listen to a port                               
+       // Listen to a port
        ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
          // TODO - Figure out how to fork after accpeting and immediately allow more connections to be handled.
          val handleOneConnection =

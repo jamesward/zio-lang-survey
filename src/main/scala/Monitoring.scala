@@ -16,19 +16,11 @@
 
 import java.io.IOException
 
-import scalaz.zio.ZIO
-import com.google.cloud.monitoring.v3.MetricServiceClient
 import com.google.api.{Metric, MonitoredResource}
-import com.google.monitoring.v3.{
-    CreateTimeSeriesRequest,
-    Point,
-    ProjectName,
-    TimeInterval,
-    TimeSeries,
-    TypedValue
-}
-
+import com.google.cloud.monitoring.v3.MetricServiceClient
+import com.google.monitoring.v3.{CreateTimeSeriesRequest, Point, ProjectName, TimeInterval, TimeSeries, TypedValue}
 import com.google.protobuf.util.Timestamps
+import scalaz.zio.ZIO
 
 trait Monitoring extends Serializable {
     val monitoring: Monitoring.Service[Any]
@@ -42,14 +34,14 @@ object Monitoring extends Serializable {
   object NoMonitoring extends Monitoring {
     override val monitoring: Service[Any] = new Service[Any] {
       override def languageVote(language: String): ZIO[Any, IOException, Unit] =
-        ZIO.succeed(())  
+        ZIO.succeed(())
       }
   }
 
   /** This implementation provides a monitoring API using stackdriver. */
   class StackDriverMonitoring(client: MetricServiceClient, projectId: String) extends Monitoring {
     override val monitoring: Service[Any] = new Service[Any] {
-      
+
       override def languageVote(language: String): ZIO[Any, IOException, Unit] = ZIO effect {
         val name = ProjectName.of(projectId)
         val labels = new java.util.HashMap[String, String]()
@@ -69,7 +61,7 @@ object Monitoring extends Serializable {
         ).build()
         val ts =
           TimeSeries.newBuilder.setMetric(metric).setResource(resource).addPoints(point).build()
-        val request = 
+        val request =
           CreateTimeSeriesRequest.newBuilder.setName(name.toString).addTimeSeries(ts).build()
         client.createTimeSeries(request)
       } refineOrDie {

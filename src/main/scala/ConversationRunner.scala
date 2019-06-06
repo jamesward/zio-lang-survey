@@ -15,14 +15,9 @@
  */
 
 import java.io.IOException
-import java.net.{ServerSocket, Socket}
 
-import scalaz.zio.{App, Ref, Schedule, ZIO, ZManaged}
-import Monitoring.monitoring
-import org.http4s.server.blaze.BlazeServerBuilder
 import scalaz.zio.clock.Clock
-import scalaz.zio.scheduler.Scheduler
-import scalaz.zio.console.Console
+import scalaz.zio.{App, ZIO}
 
 /** This trait helps adapt from the various underlying APIs for telnet/console/google actions SDK.
  * We attempt to unify all representations of user's intent into a single model.
@@ -37,13 +32,13 @@ trait IntentHandler[Intent, State] {
 object ConversationRunner {
   type ConversationEnv = Conversation with Monitoring with Clock
 }
-trait ConversationRunner extends App { 
+trait ConversationRunner extends App {
   type ConversationEnv = ConversationRunner.ConversationEnv
   type Intent
   type State
 
   /** Actually runs a single turn of conversation. */
-  def handleConversationTurn(intent: Intent): ZIO[ConversationEnv, IOException, State] 
+  def handleConversationTurn(intent: Intent): ZIO[ConversationEnv, IOException, State]
   /** Maps intents from various environments into the user's domain. */
   def intentHandler: IntentHandler[Intent, State]
   def initialState: State
@@ -76,6 +71,5 @@ trait ConversationRunner extends App {
         }
     }
   }
-
 
 }

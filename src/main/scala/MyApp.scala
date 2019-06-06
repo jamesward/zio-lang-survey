@@ -15,14 +15,10 @@
  */
 
 import java.io.IOException
-import java.net.{ServerSocket, Socket}
 
-import scalaz.zio.{App, Ref, Schedule, ZIO, ZManaged}
-import Monitoring.monitoring
 import Conversation.output
-import org.http4s.server.blaze.BlazeServerBuilder
-import scalaz.zio.clock.Clock
-import scalaz.zio.scheduler.Scheduler
+import Monitoring.monitoring
+import scalaz.zio.ZIO
 
 /** A mapping off all conversational intents we expect users to give us. */
 sealed trait SurveyIntent
@@ -38,7 +34,7 @@ case class Done() extends SurveyState
 
 object MyApp extends ConversationRunner {
 
-  val acceptableLanguages = Set("scala")    
+  val acceptableLanguages = Set("scala")
 
   type State = SurveyState
   type Intent = SurveyIntent
@@ -46,14 +42,14 @@ object MyApp extends ConversationRunner {
 
   def initialState = Init()
   def handleConversationTurn(intent: SurveyIntent): ZIO[ConversationEnv, IOException, SurveyState] = {
-     def askBestLanguage = 
+     def askBestLanguage =
        for {
          _ <- output.prompt("Survey says: What is the best programming language?")
        } yield Question()
      def handleLanguage(lang: String): ZIO[ConversationEnv, IOException, State] = {
        if (acceptableLanguages(lang.toLowerCase)) {
          output.say("Correct!").map(_ => Done())
-       } else 
+       } else
          for {
            _ <- output.say("Wrong.")
            result <- askBestLanguage
@@ -63,17 +59,17 @@ object MyApp extends ConversationRunner {
        // The user started the survey.
        case StartSurvey() => askBestLanguage
        // The user answered the survey question.
-       case LanguageChoice(lang) => 
+       case LanguageChoice(lang) =>
           for {
             _ <- monitoring.languageVote(lang)
             result <- handleLanguage(lang)
           } yield result
        // We have no idea what the user just said.
-       case _ => 
+       case _ =>
           for {
             _ <- output.say("I'm sorry, I don't understand.")
             result <- askBestLanguage
-          } yield result 
+          } yield result
      }
   }
 
@@ -83,10 +79,10 @@ object MyApp extends ConversationRunner {
   // Module to help us understand intents.
   override val intentHandler = new IntentHandler[SurveyIntent, SurveyState] {
     def fromCloud(in: String): SurveyIntent = ???
-    def fromRaw(in: String, state: SurveyState): SurveyIntent = 
+    def fromRaw(in: String, state: SurveyState): SurveyIntent =
       state match {
         case Init() => StartSurvey()
-        case Question() => LanguageChoice(in) 
+        case Question() => LanguageChoice(in)
         case Done() => ???
       }
   }

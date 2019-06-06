@@ -1,11 +1,8 @@
 import java.io.IOException
-import java.net.{ServerSocket, Socket}
 
-import scalaz.zio.{App, Ref, Schedule, ZIO, ZManaged}
-import org.http4s.server.blaze.BlazeServerBuilder
-import scalaz.zio.clock.Clock
-import scalaz.zio.scheduler.Scheduler
 import ConversationRunner.ConversationEnv
+import scalaz.zio.ZIO
+import scalaz.zio.clock.Clock
 
 /** A mutable environment we use underneath ZIO to do all the trickery/hackery of running a terminal app. */
 class ConsoleOutput() extends Conversation.Output[Any] {
@@ -54,7 +51,7 @@ object ConsoleHandler {
               override val monitoring: Monitoring.Service[Any] = services.monitoring
             }
           }
-      } yield 
+      } yield
         if(outputHack.isDone) ConsoleDone()
         else ConsolePrompt(userState)
     }
@@ -63,7 +60,7 @@ object ConsoleHandler {
         initialState: State,
         intentHandler: IntentHandler[Intent, State],
         handler: Intent => ZIO[Monitoring with Clock with Conversation, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
-      
+
        def untilComplete(zio: ZIO[Monitoring with Clock, IOException, ConsoleState[State]]): ZIO[Monitoring with Clock, IOException, ConsoleState[State]] = {
          zio.flatMap {
             case ConsoleDone() => ZIO.succeed(ConsoleDone())
@@ -72,5 +69,5 @@ object ConsoleHandler {
        }
        untilComplete(ZIO.succeed(ConsoleStart(initialState))).unit
     }
-    
+
 }
