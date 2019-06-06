@@ -13,13 +13,14 @@ object SimpleServerSockets {
       case e: IOException => e
     }
 
-  def accept(socket: ServerSocket): ZIO[Any, IOException, Socket] =
-    ZIO.effect(socket.accept) refineOrDie {
+  def accept(socketServer: ServerSocket): ZIO[Any, IOException, Socket] =
+    ZIO.effect(socketServer.accept) refineOrDie {
         case e: IOException => e
     }
 
-  def shutdown(socket: ServerSocket): ZIO[Any, Nothing, Unit] =
-    ZIO.effectTotal(socket.close())
+  // even though socket.close can throw an IOException we pretend it won't cause ZManaged's release function needs to have an error of Nothing
+  def shutdown(socketServer: ServerSocket): ZIO[Any, Nothing, Unit] =
+    ZIO.effectTotal(socketServer.close())
 }
 
 object SimpleSockets {
@@ -30,6 +31,7 @@ object SimpleSockets {
       } refineOrDie {
           case io: IOException => io
       }
+
     def println(socket: Socket, msg: String): ZIO[Any, IOException, Unit] =
       ZIO effect {
         val out = new java.io.PrintWriter(socket.getOutputStream, true)
@@ -37,6 +39,8 @@ object SimpleSockets {
       } refineOrDie {
         case io: IOException => io
       }
+
+    // even though socket.close can throw an IOException we pretend it won't cause ZManaged's release function needs to have an error of Nothing
     def close(socket: Socket): ZIO[Any, Nothing, Unit] =
       ZIO.effectTotal(socket.close())
 }
@@ -58,8 +62,7 @@ class SocketOutput(socket: Socket) extends Conversation.Output[Any] {
 
 object TelnetServerRunner {
 
-
-    // handles a single converesation on a single socket.
+    // handles a single conversation on a single socket.
     def handleConversation[Intent, State](socket: Socket, initialState: State,
                                           intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
       val initialIntent = intentHandler.fromRaw("", initialState)
@@ -92,11 +95,11 @@ object TelnetServerRunner {
                                   intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
        // Listen to a port
        ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
-         // TODO - Figure out how to fork after accpeting and immediately allow more connections to be handled.
+         // TODO - Figure out how to fork after accepting and immediately allow more connections to be handled.
          val handleOneConnection =
            for {
                socket <- SimpleServerSockets.accept(server)
-               forked <- handleConversation(socket, initialState, intentHandler)(handler).ensuring(SimpleSockets.close(socket)).fork
+               _ <- handleConversation(socket, initialState, intentHandler)(handler).ensuring(SimpleSockets.close(socket)).fork
            } yield ()
          handleOneConnection.forever
        }

@@ -20,7 +20,7 @@ import Conversation.output
 import Monitoring.monitoring
 import scalaz.zio.ZIO
 
-/** A mapping off all conversational intents we expect users to give us. */
+/** A mapping of all conversational intents we expect users to give us. */
 sealed trait SurveyIntent
 case class StartSurvey() extends SurveyIntent
 case class LanguageChoice(language: String) extends SurveyIntent
