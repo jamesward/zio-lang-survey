@@ -95,7 +95,6 @@ object TelnetServerRunner {
                                   intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
        // Listen to a port
        ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
-         // TODO - Figure out how to fork after accepting and immediately allow more connections to be handled.
          val handleOneConnection =
            for {
                socket <- SimpleServerSockets.accept(server)
