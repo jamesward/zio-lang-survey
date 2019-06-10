@@ -1,9 +1,7 @@
 import java.io.IOException
 import java.net.Socket
-import java.nio.charset.Charset
 
 import ConversationRunner.ConversationEnv
-import org.apache.hc.core5.net.URLEncodedUtils
 import rawhttp.core.body.EagerBodyReader
 import rawhttp.core.{HttpVersion, RawHttp, RawHttpHeaders, RawHttpRequest, RawHttpResponse, StatusLine}
 import scalaz.zio.clock.Clock
@@ -34,7 +32,8 @@ object WebSockets {
 
 
 /** A mutable environment we use underneath ZIO to do all the trickery/hackery of running a terminal app. */
-class WebOutput(socket: Socket, inputParser: RawHttpRequest => Option[String]) extends Conversation.Output[Any] {
+class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Output[Any] {
+  // TODO store pending JSON file to write out to the google actions SDK.
   var answer: Option[String] = None
 
   sealed trait Status
@@ -49,19 +48,14 @@ class WebOutput(socket: Socket, inputParser: RawHttpRequest => Option[String]) e
     }
   }
 
-  def response(request: RawHttpRequest, status: Status, body: String): RawHttpResponse[_] = {
+  def response(status: Status, body: String): RawHttpResponse[_] = {
     val bytes = body.getBytes
     val headers = RawHttpHeaders.newBuilder().`with`("Content-Type", "text/plain").`with`("Content-Length", bytes.length.toString).build()
     new RawHttpResponse(null, request, statusToStatusLine(status), headers, new EagerBodyReader(bytes))
   }
 
   override def say(value: String): ZIO[Any, IOException, Unit] = {
-    for {
-      req <- WebSockets.request(socket)
-      _ <- ZIO.effectTotal({answer = inputParser(req)})
-      res = response(req, Status.OK, value)
-      _ <- WebSockets.response(socket, res)
-    } yield ()
+    WebSockets.response(socket, response(Status.OK, value))
   }
 
   override def prompt(value: String): ZIO[Any, IOException, Unit] = {
@@ -71,32 +65,31 @@ class WebOutput(socket: Socket, inputParser: RawHttpRequest => Option[String]) e
 
 object WebServerRunner {
 
-  def inputParser(req: RawHttpRequest): Option[String] = {
-    import scala.collection.JavaConverters._
-    URLEncodedUtils.parse(req.getUri, Charset.defaultCharset()).asScala.find(_.getName == "language").map(_.getValue)
+  def handleConversation[Intent, State](socket: Socket, initialState: State,
+                                        intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
+      for {
+        req <- WebSockets.request(socket)
+        intent = intentHandler.fromCloud(req.getUri)
+        // TODO - pull state from socket or use initial state.
+        outputSocket <- ZIO.succeed(new WebOutput(socket, req))
+        userState <- handler(intent).provideSome[Monitoring with Clock](services => new Conversation with Monitoring with Clock {
+          override val clock: Clock.Service[Any] = services.clock
+          override val output: Conversation.Output[Any] = outputSocket
+          override val monitoring: Monitoring.Service[Any] = services.monitoring
+        })
+      } yield (outputSocket.answer, userState)
   }
 
   def openServer[Intent, State](port: Int = 8080, initialState: State,
                                 intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
      // Listen to a port
      ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
-
-       def handleConnection(current: (Option[String], State)): ZIO[Monitoring with Clock, IOException, (Option[String], State)] = {
-         val intent = intentHandler.fromRaw(current._1.getOrElse(""), current._2)
-
-         ZManaged.make(SimpleServerSockets.accept(server))(SimpleSockets.close).use { socket =>
-           for {
-             outputSocket <- ZIO.succeed(new WebOutput(socket, inputParser))
-             userState <- handler(intent).provideSome[Monitoring with Clock](services => new Conversation with Monitoring with Clock {
-               override val clock: Clock.Service[Any] = services.clock
-               override val output: Conversation.Output[Any] = outputSocket
-               override val monitoring: Monitoring.Service[Any] = services.monitoring
-             })
-           } yield (outputSocket.answer, userState)
-         }.flatMap(handleConnection)
-       }
-
-       handleConnection((None, initialState)).map(_ => ())
+      val handleOneConnection = 
+        for {
+          socket <- SimpleServerSockets.accept(server)
+          _ <- handleConversation(socket,initialState, intentHandler)(handler).ensuring(SimpleSockets.close(socket)).fork
+        } yield ()
+       handleOneConnection.forever
      }
   }
 }

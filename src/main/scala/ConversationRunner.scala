@@ -24,7 +24,7 @@ import scalaz.zio.{App, ZIO}
  */
 trait IntentHandler[Intent, State] {
     // TODO - actually pull this from Cloud API endpoints.
-    def fromCloud(in: String): Intent
+    def fromCloud(in: java.net.URI): Intent
     // Because we're not providing NLU hooks into console simulation, we're doing all the work here...
     def fromRaw(in: String, state: State): Intent
 }

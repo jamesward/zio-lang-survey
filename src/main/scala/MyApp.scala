@@ -80,7 +80,16 @@ object MyApp extends ConversationRunner {
 
   // Module to help us understand intents.
   override val intentHandler = new IntentHandler[SurveyIntent, SurveyState] {
-    def fromCloud(in: String): SurveyIntent = ???
+    def fromCloud(in: java.net.URI): SurveyIntent = {
+      // TODO - read the google cloud SDK json file.
+      import scala.collection.JavaConverters._
+      import org.apache.hc.core5.net.URLEncodedUtils
+      import java.nio.charset.Charset
+      URLEncodedUtils.parse(in, Charset.defaultCharset()).asScala.find(_.getName == "language").map(_.getValue) match {
+        case Some(language) => LanguageChoice(language.toString)
+        case None => StartSurvey()
+      }
+    }
     def fromRaw(in: String, state: SurveyState): SurveyIntent =
       state match {
         case Init() => StartSurvey()
