@@ -71,7 +71,8 @@ object MyApp extends ConversationRunner {
        case _ =>
           for {
             _ <- output.say("I'm sorry, I don't understand.")
-          } yield Init()
+            result <- askBestLanguage
+          } yield result
      }
   }
 

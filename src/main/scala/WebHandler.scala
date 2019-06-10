@@ -33,8 +33,9 @@ object WebSockets {
 
 /** A mutable environment we use underneath ZIO to do all the trickery/hackery of running a terminal app. */
 class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Output[Any] {
-  // TODO store pending JSON file to write out to the google actions SDK.
-  var answer: Option[String] = None
+  // store pending JSON file to write out to the google actions SDK.
+  private[this] var prompt: Boolean = false
+  private[this] var answers = collection.mutable.ArrayBuffer[String]()
 
   sealed trait Status
 
@@ -54,13 +55,22 @@ class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Ou
     new RawHttpResponse(null, request, statusToStatusLine(status), headers, new EagerBodyReader(bytes))
   }
 
-  override def say(value: String): ZIO[Any, IOException, Unit] = {
-    WebSockets.response(socket, response(Status.OK, value))
+  override def say(value: String): ZIO[Any, IOException, Unit] = ZIO.effectTotal {
+    answers += value
   }
 
   override def prompt(value: String): ZIO[Any, IOException, Unit] = {
-    say(value)
+    for {
+      _ <- ZIO.effectTotal { prompt = true }
+      _ <- say(value)
+    } yield ()
   }
+  // TODO - flush w/ state?
+  def flush(): ZIO[Any, IOException, Unit] = {
+    val value: String = s"${answers.mkString("\n")}\nPrompt: $prompt\n"
+    WebSockets.response(socket, response(Status.OK, value))
+  }
+
 }
 
 object WebServerRunner {
@@ -77,7 +87,9 @@ object WebServerRunner {
           override val output: Conversation.Output[Any] = outputSocket
           override val monitoring: Monitoring.Service[Any] = services.monitoring
         })
-      } yield (outputSocket.answer, userState)
+        // TODO write userState to outputSocket...
+        _ <- outputSocket.flush()
+      } yield ()
   }
 
   def openServer[Intent, State](port: Int = 8080, initialState: State,
