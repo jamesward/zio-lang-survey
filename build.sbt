@@ -1,7 +1,13 @@
 enablePlugins(JavaAppPackaging, DockerPlugin)
 
 val ZioVersion = "1.0-RC5"
+val circeVersion = "0.10.0"
 
+libraryDependencies ++= Seq(
+  "io.circe" %% "circe-core",
+  "io.circe" %% "circe-generic",
+  "io.circe" %% "circe-parser"
+).map(_ % circeVersion)
 libraryDependencies ++= Seq(
   "org.scalaz"                      %% "scalaz-zio"              % ZioVersion,
   "com.athaydes.rawhttp"            %  "rawhttp-core"            % "2.2",

@@ -6,6 +6,7 @@ import rawhttp.core.body.EagerBodyReader
 import rawhttp.core.{HttpVersion, RawHttp, RawHttpHeaders, RawHttpRequest, RawHttpResponse, StatusLine}
 import scalaz.zio.clock.Clock
 import scalaz.zio.{ZIO, ZManaged}
+import io.circe.Json
 
 
 object WebSockets {
@@ -24,6 +25,27 @@ object WebSockets {
     } refineOrDie {
       case io: IOException => io
     }
+
+  def stringBody(req: RawHttpRequest): ZIO[Any, IOException, String] =
+    ZIO effect {
+      import java.nio.charset.Charset
+      req.getBody.get.asRawString(Charset.defaultCharset)
+    } refineOrDie {
+      case io: IOException => io
+    }
+
+  def jsonBody(req: RawHttpRequest): ZIO[Any, IOException, Json] =
+    for {
+      raw <- stringBody(req)
+      json <- ZIO.effect {
+        io.circe.parser.parse(raw) match {
+          case Left(err) => throw new IOException(s"Failed to parse incoming json: $err")
+          case Right(json) => json
+        }
+      } refineOrDie {
+        case io: IOException => io
+      }
+    } yield json 
 
   // even though socket.close can throw an IOException we pretend it won't cause ZManaged's release function needs to have an error of Nothing
   def close(socket: Socket): ZIO[Any, Nothing, Unit] =
@@ -67,7 +89,24 @@ class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Ou
   }
   // TODO - flush w/ state?
   def flush(): ZIO[Any, IOException, Unit] = {
-    val value: String = s"${answers.mkString("\n")}\nPrompt: $prompt\n"
+    val text: String = answers.mkString(" ")
+    val value: String = s"""{
+          "payload": {
+            "google": {
+              "expectUserResponse": $prompt,
+              "richResponse": {
+                "items": [
+                  {
+                    "simpleResponse": {
+                      "textToSpeech": "$text",
+                      "displayText": "$text"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }"""
     WebSockets.response(socket, response(Status.OK, value))
   }
 
@@ -79,15 +118,16 @@ object WebServerRunner {
                                         intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
       for {
         req <- WebSockets.request(socket)
-        intent = intentHandler.fromCloud(req.getUri)
-        // TODO - pull state from socket or use initial state.
+        json <- WebSockets.jsonBody(req)
+        intent = intentHandler.fromCloud(json)
+        // TODO - pull state from webhook/context in dialog-flow app.
         outputSocket <- ZIO.succeed(new WebOutput(socket, req))
         userState <- handler(intent).provideSome[Monitoring with Clock](services => new Conversation with Monitoring with Clock {
           override val clock: Clock.Service[Any] = services.clock
           override val output: Conversation.Output[Any] = outputSocket
           override val monitoring: Monitoring.Service[Any] = services.monitoring
         })
-        // TODO write userState to outputSocket...
+        // TODO write userState out in context in dialog-flow app.
         _ <- outputSocket.flush()
       } yield ()
   }

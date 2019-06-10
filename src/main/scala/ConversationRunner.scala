@@ -18,13 +18,14 @@ import java.io.IOException
 
 import scalaz.zio.clock.Clock
 import scalaz.zio.{App, ZIO}
+import io.circe.Json
 
 /** This trait helps adapt from the various underlying APIs for telnet/console/google actions SDK.
  * We attempt to unify all representations of user's intent into a single model.
  */
 trait IntentHandler[Intent, State] {
     // TODO - actually pull this from Cloud API endpoints.
-    def fromCloud(in: java.net.URI): Intent
+    def fromCloud(in: Json): Intent
     // Because we're not providing NLU hooks into console simulation, we're doing all the work here...
     def fromRaw(in: String, state: State): Intent
 }
