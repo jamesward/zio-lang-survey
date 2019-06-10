@@ -43,14 +43,16 @@ trait ConversationRunner extends App {
   def intentHandler: IntentHandler[Intent, State]
   def initialState: State
 
-
-
   override def run(args: List[String]): ZIO[Clock, Nothing, Int] = {
     val runner =
       if (args == List("-telnet")) telnetApp
+      else if (args == List("-web")) webApp
       else consoleApp
 
-    runner.fold(_ => 1, _ => 0)
+    runner.fold({ e =>
+      e.printStackTrace()
+      1
+    }, _ => 0)
   }
 
   def consoleApp: ZIO[Clock, IOException, Unit] = {
@@ -69,6 +71,15 @@ trait ConversationRunner extends App {
           override val clock: Clock.Service[Any] = services.clock
           override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
         }
+    }
+  }
+
+  def webApp: ZIO[Clock, IOException, Unit] = {
+    WebServerRunner.openServer(8080, initialState, intentHandler)(handleConversationTurn).provideSome[Clock] { services =>
+      new Monitoring with Clock {
+        override val clock: Clock.Service[Any] = services.clock
+        override val monitoring: Monitoring.Service[Any] = Monitoring.NoMonitoring.monitoring
+      }
     }
   }
 

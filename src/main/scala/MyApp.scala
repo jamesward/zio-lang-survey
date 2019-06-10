@@ -24,6 +24,7 @@ import scalaz.zio.ZIO
 sealed trait SurveyIntent
 case class StartSurvey() extends SurveyIntent
 case class LanguageChoice(language: String) extends SurveyIntent
+case class EndSurvey() extends SurveyIntent
 
 /** The states our conversation could be in.  basically "starting" or "prompting". */
 sealed trait SurveyState
@@ -46,6 +47,7 @@ object MyApp extends ConversationRunner {
        for {
          _ <- output.prompt("Survey says: What is the best programming language?")
        } yield Question()
+
      def handleLanguage(lang: String): ZIO[ConversationEnv, IOException, State] = {
        if (acceptableLanguages(lang.toLowerCase)) {
          output.say("Correct!").map(_ => Done())
@@ -55,6 +57,7 @@ object MyApp extends ConversationRunner {
            result <- askBestLanguage
          } yield result
      }
+
      intent match {
        // The user started the survey.
        case StartSurvey() => askBestLanguage
@@ -68,8 +71,7 @@ object MyApp extends ConversationRunner {
        case _ =>
           for {
             _ <- output.say("I'm sorry, I don't understand.")
-            result <- askBestLanguage
-          } yield result
+          } yield Init()
      }
   }
 
@@ -83,7 +85,7 @@ object MyApp extends ConversationRunner {
       state match {
         case Init() => StartSurvey()
         case Question() => LanguageChoice(in)
-        case Done() => ???
+        case Done() => EndSurvey()
       }
   }
 
