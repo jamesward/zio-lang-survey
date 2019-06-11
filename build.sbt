@@ -8,6 +8,7 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-generic",
   "io.circe" %% "circe-parser"
 ).map(_ % circeVersion)
+
 libraryDependencies ++= Seq(
   "org.scalaz"                      %% "scalaz-zio"              % ZioVersion,
   "com.athaydes.rawhttp"            %  "rawhttp-core"            % "2.2",

@@ -7,14 +7,17 @@ import rawhttp.core.{HttpVersion, RawHttp, RawHttpHeaders, RawHttpRequest, RawHt
 import scalaz.zio.clock.Clock
 import scalaz.zio.{ZIO, ZManaged}
 import io.circe.Json
+import rawhttp.core.errors.InvalidHttpRequest
 
 
 object WebSockets {
   private[this] val http = new RawHttp()
 
-  def request(socket: Socket): ZIO[Any, IOException, RawHttpRequest] =
+  def request(socket: Socket): ZIO[Any, IOException, Option[RawHttpRequest]] =
     ZIO effect {
-      http.parseRequest(socket.getInputStream)
+      Some(http.parseRequest(socket.getInputStream))
+    } catchSome {
+      case i: InvalidHttpRequest => ZIO.succeed(None)
     } refineOrDie {
       case io: IOException => io
     }
@@ -45,7 +48,7 @@ object WebSockets {
       } refineOrDie {
         case io: IOException => io
       }
-    } yield json 
+    } yield json
 
   // even though socket.close can throw an IOException we pretend it won't cause ZManaged's release function needs to have an error of Nothing
   def close(socket: Socket): ZIO[Any, Nothing, Unit] =
@@ -87,6 +90,7 @@ class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Ou
       _ <- say(value)
     } yield ()
   }
+
   // TODO - flush w/ state?
   def flush(): ZIO[Any, IOException, Unit] = {
     val text: String = answers.mkString(" ")
@@ -110,18 +114,23 @@ class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Ou
     WebSockets.response(socket, response(Status.OK, value))
   }
 
+  def ok(): ZIO[Any, IOException, Unit] = {
+    WebSockets.response(socket, response(Status.OK, ""))
+  }
+
 }
 
 object WebServerRunner {
 
   def handleConversation[Intent, State](socket: Socket, initialState: State,
                                         intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
+
+    def doJson(req: RawHttpRequest) = {
       for {
-        req <- WebSockets.request(socket)
+        outputSocket <- ZIO.succeed(new WebOutput(socket, req))
         json <- WebSockets.jsonBody(req)
         intent = intentHandler.fromCloud(json)
         // TODO - pull state from webhook/context in dialog-flow app.
-        outputSocket <- ZIO.succeed(new WebOutput(socket, req))
         userState <- handler(intent).provideSome[Monitoring with Clock](services => new Conversation with Monitoring with Clock {
           override val clock: Clock.Service[Any] = services.clock
           override val output: Conversation.Output[Any] = outputSocket
@@ -130,13 +139,28 @@ object WebServerRunner {
         // TODO write userState out in context in dialog-flow app.
         _ <- outputSocket.flush()
       } yield ()
+    }
+
+    def doOk(req: RawHttpRequest) = {
+      for {
+        outputSocket <- ZIO.succeed(new WebOutput(socket, req))
+        _ <- outputSocket.ok()
+      } yield ()
+    }
+
+    for {
+      maybeReq <- WebSockets.request(socket)
+      _ <- maybeReq.fold[ZIO[Monitoring with Clock, IOException, Unit]](ZIO.unit) { req =>
+        if (req.getMethod == "GET") doOk(req) else doJson(req)
+      }
+    } yield ()
   }
 
   def openServer[Intent, State](port: Int = 8080, initialState: State,
                                 intentHandler: IntentHandler[Intent,State])(handler: Intent => ZIO[ConversationEnv, IOException, State]): ZIO[Monitoring with Clock, IOException, Unit] = {
      // Listen to a port
      ZManaged.make(SimpleServerSockets.listen(port))(SimpleServerSockets.shutdown).use { server =>
-      val handleOneConnection = 
+      val handleOneConnection =
         for {
           socket <- SimpleServerSockets.accept(server)
           _ <- handleConversation(socket,initialState, intentHandler)(handler).ensuring(SimpleSockets.close(socket)).fork
