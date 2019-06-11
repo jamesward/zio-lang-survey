@@ -17,33 +17,23 @@
 import java.io.IOException
 
 import scalaz.zio.ZIO
-import scalaz.zio.console.Console
 
 trait Conversation extends Serializable {
-  val conversation: Conversation.Service[Any]
+  def output: Conversation.Output[Any]
 }
 
-object Conversation extends Serializable {
-  trait Service[R] {
-    def say(s: String): ZIO[R, IOException, Unit]
-    def listen: ZIO[R, IOException, String]
+object Conversation {
+  trait Output[R] {
+    /** Output the string to the user. */
+    def say(value: String): ZIO[R, IOException, Unit]
+    /** Prompt the user for more input. */
+    // TODO - figure out how to specify intents we expect.
+    def prompt(value: String): ZIO[Conversation, IOException, Unit]
   }
 
-  object StdInOut extends Conversation with Console.Live {
-    override val conversation: Service[Any] = new Service[Any] {
-      override def say(s: String): ZIO[Any, IOException, Unit] = {
-        console.putStrLn(s).mapError(_ => new IOException())
-      }
-
-      override def listen: ZIO[Any, IOException, String] = {
-        console.getStrLn
-      }
-    }
+  object output extends Conversation.Output[Conversation] {
+    def say(value: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.output.say(value))
+    def prompt(value: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.output.prompt(value))
   }
-
-  object conversation extends Conversation.Service[Conversation] {
-    override def say(s: String): ZIO[Conversation, IOException, Unit] = ZIO.accessM[Conversation](_.conversation.say(s))
-    override def listen: ZIO[Conversation, IOException, String] = ZIO.accessM[Conversation](_.conversation.listen)
-  }
-
 }
+
