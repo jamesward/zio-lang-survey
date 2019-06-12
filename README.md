@@ -25,10 +25,6 @@ gcloud beta run deploy --image gcr.io/$PROJECT_ID/zio-lang-survey --region us-ce
 
 TODO:
 
- - Fix the web server
- - Add JSON handling
- - Add Graal
- - Fix Action Package
  - Stackdriver
 
 LATER:
