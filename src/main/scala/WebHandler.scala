@@ -97,7 +97,7 @@ class WebOutput(socket: Socket, request: RawHttpRequest) extends Conversation.Ou
     val value: String = s"""{
           "payload": {
             "google": {
-              "expectUserResponse": $prompt,
+              "expectUserResponse": false,
               "richResponse": {
                 "items": [
                   {
