@@ -1,0 +1,4 @@
+# docker build -t adoptopenjdk8 --file Dockerfile.dev .
+# docker run -it -v $(pwd):/app -v ~/.sbt:/root/.sbt -v ~/.m2:/root/.m2 -v ~/.ivy2:/root/.ivy2 --workdir /app adoptopenjdk8 /bin/bash
+
+FROM adoptopenjdk/openjdk8
