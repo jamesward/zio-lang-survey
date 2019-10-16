@@ -18,7 +18,7 @@ import java.io.IOException
 
 import Conversation.output
 import Monitoring.monitoring
-import scalaz.zio.ZIO
+import zio.ZIO
 
 /** A mapping of all conversational intents we expect users to give us. */
 sealed trait SurveyIntent

@@ -20,7 +20,7 @@ import com.google.api.{Metric, MonitoredResource}
 import com.google.cloud.monitoring.v3.MetricServiceClient
 import com.google.monitoring.v3.{CreateTimeSeriesRequest, Point, ProjectName, TimeInterval, TimeSeries, TypedValue}
 import com.google.protobuf.util.Timestamps
-import scalaz.zio.ZIO
+import zio.ZIO
 
 trait Monitoring extends Serializable {
     val monitoring: Monitoring.Service[Any]

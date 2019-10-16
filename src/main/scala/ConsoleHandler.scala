@@ -1,8 +1,8 @@
 import java.io.IOException
 
 import ConversationRunner.ConversationEnv
-import scalaz.zio.ZIO
-import scalaz.zio.clock.Clock
+import zio.ZIO
+import zio.clock.Clock
 
 import scala.io.StdIn
 

@@ -16,7 +16,7 @@
 
 import java.io.IOException
 
-import scalaz.zio.ZIO
+import zio.ZIO
 
 trait Conversation extends Serializable {
   def output: Conversation.Output[Any]

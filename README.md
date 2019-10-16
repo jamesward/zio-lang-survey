@@ -1,6 +1,22 @@
 ZIO Language Survey
 -------------------
 
+
+Run Console App:
+```
+./sbt ~run
+```
+
+Run Telnet App:
+```
+./sbt "~reStart -telnet"
+```
+
+```
+telnet localhost 8022
+```
+
+Run Web App:
 ```
 ./sbt "~reStart -web"
 ```

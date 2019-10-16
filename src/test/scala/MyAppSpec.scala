@@ -17,8 +17,8 @@
 import java.io.IOException
 
 import org.scalatest.{FlatSpec, Matchers}
-import scalaz.zio.clock.Clock
-import scalaz.zio.{DefaultRuntime, ZIO}
+import zio.clock.Clock
+import zio.{DefaultRuntime, ZIO}
 
 /** Helper module to remember all logged languages in the Monitoring component. */
 class RecordingMonitorService extends Monitoring.Service[Any] {

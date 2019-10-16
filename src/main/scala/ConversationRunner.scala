@@ -16,8 +16,8 @@
 
 import java.io.IOException
 
-import scalaz.zio.clock.Clock
-import scalaz.zio.{App, ZIO}
+import zio.clock.Clock
+import zio.{App, ZIO}
 import io.circe.Json
 
 /** This trait helps adapt from the various underlying APIs for telnet/console/google actions SDK.

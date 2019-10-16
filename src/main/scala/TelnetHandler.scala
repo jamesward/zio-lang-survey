@@ -2,8 +2,8 @@ import java.io.IOException
 import java.net.{ServerSocket, Socket}
 
 import ConversationRunner.ConversationEnv
-import scalaz.zio.clock.Clock
-import scalaz.zio.{ZIO, ZManaged}
+import zio.clock.Clock
+import zio.{ZIO, ZManaged}
 
 
 object SimpleServerSockets {

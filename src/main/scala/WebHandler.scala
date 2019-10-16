@@ -4,8 +4,8 @@ import java.net.Socket
 import ConversationRunner.ConversationEnv
 import rawhttp.core.body.EagerBodyReader
 import rawhttp.core.{HttpVersion, RawHttp, RawHttpHeaders, RawHttpRequest, RawHttpResponse, StatusLine}
-import scalaz.zio.clock.Clock
-import scalaz.zio.{ZIO, ZManaged}
+import zio.clock.Clock
+import zio.{ZIO, ZManaged}
 import io.circe.Json
 import rawhttp.core.errors.InvalidHttpRequest
 
